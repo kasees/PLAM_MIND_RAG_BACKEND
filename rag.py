@@ -63,3 +63,65 @@ def save_message(session_id: str, role: str, content: str) -> None:
     """Appends a chat turn to Redis memory."""
     redis_db.rpush(f"chat:{session_id}", json.dumps({"role": role, "content": content}))
     redis_db.ltrim(f"chat:{session_id}", -10, -1)
+
+
+
+def ask_rag_assistant(session_id: str, user_query: str) -> Dict[str, Any]:
+    """Custom conversational RAG pipeline with LLM-based interview booking."""
+    history = get_history(session_id)
+    context = search_qdrant(user_query)
+
+    system_instruction = f"""
+You are a helpful AI assistant for Palm Mind Technology.
+Answer user questions using ONLY the context below. If the answer is not in the context, state that clearly.
+
+INTERVIEW BOOKING RULE:
+If the user wants to book an interview, collect 4 required details: name, email, date, and time.
+- If ANY of the 4 details are missing, politely ask for the missing details.
+- Once ALL 4 details are provided, respond ONLY with valid JSON in this exact format:
+{{"booking": true, "name": "...", "email": "...", "date": "...", "time": "..."}}
+
+Context from uploaded documents:
+{context if context else "No documents uploaded yet."}
+"""
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_instruction}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": user_query})
+
+    completion = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,  # type: ignore[arg-type]
+        temperature=0.2,
+    )
+
+    reply = completion.choices.message.content or ""
+    booking_saved = False
+
+    if '"booking": true' in reply:
+        try:
+            data = json.loads(reply)
+            save_interview_booking(
+                session_id=session_id,
+                name=data["name"],
+                email=data["email"],
+                date=data["date"],
+                time=data["time"],
+            )
+            booking_saved = True
+            reply = (
+                f"Interview confirmed for {data['name']} on {data['date']} at {data['time']}. "
+                f"Confirmation logged for {data['email']}."
+            )
+        except Exception:
+            pass
+
+    save_message(session_id, "user", user_query)
+    save_message(session_id, "assistant", reply)
+
+    return {
+        "session_id": session_id,
+        "reply": reply,
+        "booking_confirmed": booking_saved,
+    }
+
