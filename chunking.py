@@ -12,7 +12,7 @@ def fixed_chunking(text:str,chunk_size: int=500, overlap: int=100)-> List[str]:
         start+=chunk_size-overlap
     return chunks
 
-def paragraph_chunking(text;str,max_length:int=800)->List[str]:
+def paragraph_chunking(text:str,max_length:int=800)->List[str]:
     """Strategy 2: Splits text along paragraph boundaries to preserve context."""
     paragaphs=text.split("\n\n")
     chunks: List[str]=[]
