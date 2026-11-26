@@ -14,7 +14,7 @@ from database import save_interview_booking
 load_dotenv()
 
 COLLECTION_NAME="documents_collection"
-embed_model=SentenceTransfomer("all-MiniLM-L6-v2")
+embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 qdrant = QdrantClient(path="./qdrant_data")
 redis_db = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
