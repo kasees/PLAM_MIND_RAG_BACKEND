@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from typing import Any, Dict, List
 import redis
@@ -13,7 +14,7 @@ from database import save_interview_booking
 
 load_dotenv()
 
-COLLECTION_NAME="documents_collection"
+COLLECTION_NAME = "documents_collection"
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 qdrant = QdrantClient(path="./qdrant_data")
 redis_db = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
@@ -43,7 +44,7 @@ def store_chunks_in_qdrant(chunks: List[str], filename: str) -> None:
 
 def search_qdrant(query: str, top_k: int = 3) -> str:
     """Retrieves top-k relevant document chunks from Qdrant."""
-    query_vector = embed_model.encode([query]).tolist()
+    query_vector = embed_model.encode(query).tolist()
     results = qdrant.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
@@ -65,7 +66,6 @@ def save_message(session_id: str, role: str, content: str) -> None:
     redis_db.ltrim(f"chat:{session_id}", -10, -1)
 
 
-
 def ask_rag_assistant(session_id: str, user_query: str) -> Dict[str, Any]:
     """Custom conversational RAG pipeline with LLM-based interview booking."""
     history = get_history(session_id)
@@ -78,7 +78,7 @@ Answer user questions using ONLY the context below. If the answer is not in the 
 INTERVIEW BOOKING RULE:
 If the user wants to book an interview, collect 4 required details: name, email, date, and time.
 - If ANY of the 4 details are missing, politely ask for the missing details.
-- Once ALL 4 details are provided, respond ONLY with valid JSON in this exact format:
+- Once ALL 4 details are provided, respond ONLY with valid JSON in this exact format (no markdown fences):
 {{"booking": true, "name": "...", "email": "...", "date": "...", "time": "..."}}
 
 Context from uploaded documents:
@@ -89,18 +89,21 @@ Context from uploaded documents:
     messages.extend(history)
     messages.append({"role": "user", "content": user_query})
 
+    
     completion = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=messages,  # type: ignore[arg-type]
+        model="openai/gpt-oss-120b",
+        messages=messages,  
         temperature=0.2,
     )
 
-    reply = completion.choices.message.content or ""
+
+    reply = (completion.choices[0].message.content or "").strip()
     booking_saved = False
 
-    if '"booking": true' in reply:
+    if '"booking": true' in reply or '"booking":true' in reply:
         try:
-            data = json.loads(reply)
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", reply, flags=re.IGNORECASE).strip()
+            data = json.loads(cleaned)
             save_interview_booking(
                 session_id=session_id,
                 name=data["name"],
@@ -124,4 +127,3 @@ Context from uploaded documents:
         "reply": reply,
         "booking_confirmed": booking_saved,
     }
-

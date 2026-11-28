@@ -1,7 +1,9 @@
 import io
+from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, AsyncGenerator, Dict
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from pypdf import PdfReader
 
@@ -9,7 +11,22 @@ from chunking import fixed_chunking, paragraph_chunking
 from database import init_db, save_document_metadata
 from rag import ask_rag_assistant, store_chunks_in_qdrant
 
-app = FastAPI(title="Palm Mind AI - Document Ingestion & Conversational RAG API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="Palm Mind AI - Document Ingestion & Conversational RAG API",
+    lifespan=lifespan,
+)
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/docs")
 
 
 class ChunkStrategy(str, Enum):
@@ -20,11 +37,6 @@ class ChunkStrategy(str, Enum):
 class ChatInput(BaseModel):
     session_id: str
     query: str
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 @app.post("/ingest")
@@ -62,3 +74,4 @@ async def ingest_document(
 @app.post("/chat")
 def chat(payload: ChatInput) -> Dict[str, Any]:
     return ask_rag_assistant(session_id=payload.session_id, user_query=payload.query)
+
