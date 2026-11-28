@@ -34,7 +34,7 @@ Backend service built with **FastAPI**, **Qdrant**, **SQLite**, **Redis**, and *
 4. **Start FastAPI Server**
 
    ```bash
-   uvicorn main:app --reload
+   uvicorn main:app --port 8001
    ```
 
    Open **`http://127.0.0.1:8001`** to test `/ingest` and `/chat`.
